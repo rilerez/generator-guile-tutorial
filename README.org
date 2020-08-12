@@ -229,7 +229,7 @@ But we can use ~syntax-parameterize~ to give ~yield~ meaning inside of a generat
   (call-with-yield
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
-       (lambda* args body ...)))))
+       (lambda args body ...)))))
 #+END_SRC
 
 And the generator expression
@@ -241,3 +241,9 @@ And the generator expression
       (loop (1+ i)))))
 #+END_SRC
 works as desired!
+* See also
+- [[https://www.gnu.org/software/guile/manual/guile.html#Prompts][The Guile manual's entry on prompts]]
+- Andy Wingo has some good blog posts
+  - [[https://wingolog.org/archives/2010/02/26/guile-and-delimited-continuations][Guile and delimited continuations]] goes over delimited continuations do and a high level view of how they can be implemented
+  - [[https://wingolog.org/archives/2017/06/27/growing-fibers][Growing fibers]] goes over using delimited continuations to implement fibers (cooperative lightweight threads)
+- [[https://www2.ccs.neu.edu/racket/pubs/pldi93-sitaram.pdf][Handling Control]], The paper Andy Wingo cites as the paper proposing the version of delimited continuations Guile uses.
