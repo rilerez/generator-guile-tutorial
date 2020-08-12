@@ -1,11 +1,8 @@
-#+TITLE: Implementing Generators
+#+TITLE: Implementing Generators: A delimited continuations tutorial
 # Local Variables:
 # eval: (geiser-syntax--scheme-indent (generator 1))
 # scheme-program-name: "guile"
 # End:
-
-* Implementing Generators in Guile Scheme
- through delimited continuations!
 
 * Generators?
  Generators are great. They let you write functions that can be paused and later continued the next time it's called. This can be useful for statefully modeling iterators, like in Python. Generators can also be used to implement cooperative multitasking: each generator represents a process. Each process can do some work and then pause. A scheduler then calls each process in rotation. In fact, Andy Wingo, Guile maintainer, wrote about the specifics of writing such a system [[https://wingolog.org/archives/2017/06/27/growing-fibers][here]].
@@ -152,7 +149,7 @@ and a prompt handler ready for multiple return values:
       (set! next continue)
       (apply values return-vals))))
 #+END_SRC
-* Final form
+** Final form
 Ultimately we will want a macro to give us our desired generator syntax. But we should use a plain function to do the heavy lifting. It needs to set up a local version of everything we just did:
 #+BEGIN_SRC scheme
 (define (make-generator ???)
@@ -214,7 +211,7 @@ This is unwieldy but it works:
 (count)                                 ;=>2
 (count)                                 ;=>3
 #+END_SRC
-* The macro
+* Syntactic sugar
 Of course, we would prefer the ergonomic syntax where ~generator~ works like a special form. This requires macros. First, we need a way to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
 #+BEGIN_SRC scheme
 (define-syntax-parameter yield
