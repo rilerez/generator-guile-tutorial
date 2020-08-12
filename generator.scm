@@ -25,7 +25,7 @@
   (call-with-yield
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
-       (lambda* args body ...)))))
+       (lambda args body ...)))))
 
 
 

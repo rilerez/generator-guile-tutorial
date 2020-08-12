@@ -18,17 +18,17 @@ I will focus only on how to implement generators. Particularly, implementing gen
 and have it work like the following Python:
 #+BEGIN_SRC python
 def count (i=0):
-    while true:
+    while True:
         yield i
         i+=1
 #+END_SRC
 
 More precisely, the function ~count~, if called with no arguments, will return 0 the 0th call, 1 on the 1st call, then 2, and so on.
 #+BEGIN_SRC scheme
-(count)                                 ;=>0
-(count)                                 ;=>1
-(count)                                 ;=>2
-(count)                                 ;=>3
+(count)         ;=>0
+(count)         ;=>1
+(count)         ;=>2
+(count)         ;=>3
 #+END_SRC
 Essentially, stepping through one iteration of an infinite loop each time ~count~ is called.
 
