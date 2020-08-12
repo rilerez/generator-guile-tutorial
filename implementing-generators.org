@@ -1,0 +1,246 @@
+#+TITLE: Implementing Generators
+# Local Variables:
+# eval: (geiser-syntax--scheme-indent (generator 1))
+# scheme-program-name: "guile"
+# End:
+
+* Implementing Generators in Guile Scheme
+ through delimited continuations!
+
+* Generators?
+ Generators are great. They let you write functions that can be paused and later continued the next time it's called. This can be useful for statefully modeling iterators, like in Python. Generators can also be used to implement cooperative multitasking: each generator represents a process. Each process can do some work and then pause. A scheduler then calls each process in rotation. In fact, Andy Wingo, Guile maintainer, wrote about the specifics of writing such a system [[https://wingolog.org/archives/2017/06/27/growing-fibers][here]].
+
+I will focus only on how to implement generators. Particularly, implementing generators in Guile scheme using delimited continuations. Our goal is to be able to write something like
+#+BEGIN_SRC scheme
+(define count
+  (generator ()
+    (let loop ((i start))
+      (yield i)
+      (loop (1+ i)))))
+#+END_SRC
+and have it work like the following Python:
+#+BEGIN_SRC python
+def count (i=0):
+    while true:
+        yield i
+        i+=1
+#+END_SRC
+
+More precisely, the function ~count~, if called with no arguments, will return 0 the 0th call, 1 on the 1st call, then 2, and so on.
+#+BEGIN_SRC scheme
+(count)                                 ;=>0
+(count)                                 ;=>1
+(count)                                 ;=>2
+(count)                                 ;=>3
+#+END_SRC
+Essentially, stepping through one iteration of an infinite loop each time ~count~ is called.
+
+But this requires a form of control flow that lets us leave a block of code and come back to it later. In Guile, the tool that lets you do this is a delimited continuation, also called a prompt (by analogy with starting, stopping and pausing programs from a shell). Personally, this analogy didn't help me very much. Instead, I will try to explain how they work, while comparing them to throwing and catching exceptions when relevant.
+* Delimited continuations?
+Delimited continuations are a general form of control flow, like a common denominator between generators, coroutines, and exceptions.
+
+Delimited continuations let you pause some code, jump back to a previous caller that can "catch" you (like an exception), and give you the option to continue from where you paused later (like a generator).
+To demonstrate how delimited continuations work in Guile, lets walk through a contrived example.
+
+The first step is to define a prompt tag. This tells Guile how far back up the stack we should go after pausing, analogous to how you can throw a specific type of exception that can only be caught by a matching handler.
+#+BEGIN_SRC scheme
+(define example-tag (make-prompt-tag 'example))
+#+END_SRC
+
+To pause, we use the function ~abort-to-prompt~, which takes a prompt tag:
+#+BEGIN_SRC scheme
+(abort-to-prompt example-tag)
+#+END_SRC
+pauses the current computation and escapes to a handler, specifically an ~example-tag~ handler.
+
+You set up a prompt handler with ~call-with-prompt~ which takes
+#+BEGIN_SRC scheme
+(call-with-prompt
+    the-prompt-tag
+  the-thunk-to-run
+  the-handler-called-if-thunk-aborts)
+#+END_SRC
+When the handler gets called, Guile passes it a continuation, a function you can call to continue the paused computation.
+
+Putting it all together, you get
+#+BEGIN_SRC scheme
+(call-with-prompt example-tag
+  ;; call this thunk
+  (lambda ()
+    (1+
+     (abort-to-prompt example-tag)))    ; pause
+  ;; handler (what to do after paused)
+  (lambda (continue)                      ; aka continuation
+    (continue 3)))
+#+END_SRC
+This code sets up an ~example-tag~ handler and then calls the first argument, a thunk. The thunk gets ready to add one, but before it can, it aborts to the ~example-tag~ handler.
+
+The handler decides to continue, supplying the value 3. The thunk was about to add 1 before pausing, so when supplied 3, it calculates ~(1+ 3)~, evaluating to 4.
+
+You can also return values when pausing:
+#+BEGIN_SRC scheme
+(call-with-prompt example-tag
+  (lambda ()
+    (1+ (abort-to-prompt example-tag
+                         'I 'can 'return 'these)))
+  (lambda (_ . rest)
+    rest))
+#+END_SRC
+This will return the list ~(I can return these)~. In this case, we ignore the continuation with no intention to ever continue the paused process.
+
+Continuations are powerful because they are first-class functions we call, save, or throw away. We can even save the continuation outside of the prompt handler.
+This will come in handy for implementing generators, which we are now prepared to start.
+* Implementing generators
+** the key mechanism
+First, we need a tag:
+#+BEGIN_SRC scheme
+(define yield-tag (make-prompt-tag 'yield))
+#+END_SRC
+For convenience, define yield:
+#+BEGIN_SRC scheme
+(define (yield arg)
+  (abort-to-prompt yield-tag arg))
+#+END_SRC
+#+BEGIN_SRC scheme
+(define next #f)
+(call-with-prompt yield-tag
+  (lambda ()
+    (let loop ((i 0))
+      (yield i)
+      (loop (1+ i))))
+  (lambda (continue return-val)
+    ;; capture the continuation for later use
+    (set! next continue)
+    return-val))
+#+END_SRC
+This evaluates to 0 and saves the continuation in ~next~; however,
+calling ~(next)~ will error because it tries to abort without a prompt handler.
+
+So lets abstract out the skeleton that sets up the prompt:
+#+BEGIN_SRC scheme
+(define (call-with-yield-prompt f)
+  (call-with-prompt yield-tag
+    f
+    (lambda (continue return-val)
+      (set! next continue)
+      return-val)))
+
+(define start-count
+  (lambda ()
+    (let loop ((i 0))
+      (yield i)
+      (loop (1+ i)))))
+(define next start-count)
+
+(call-with-yield-prompt next)           ;=> 0
+(call-with-yield-prompt next)           ;=> 1
+(call-with-yield-prompt next)           ;=> 2
+#+END_SRC
+That's the key mechanism we need. We are almost done, we just need to bundle this up and generalize.
+
+Unlike Python, Guile has multiple return values. We should support those. Here's a variadic ~yield~:
+#+BEGIN_SRC scheme
+(define (yield . args)
+  (apply abort-to-prompt yield-tag args))
+#+END_SRC
+and a prompt handler ready for multiple return values:
+#+BEGIN_SRC scheme
+(define (call-with-yield-prompt f)
+  (call-with-prompt yield-tag
+    f
+    (lambda (continue . return-vals)
+      (set! next continue)
+      (apply values return-vals))))
+#+END_SRC
+* Final form
+Ultimately we will want a macro to give us our desired generator syntax. But we should use a plain function to do the heavy lifting. It needs to set up a local version of everything we just did:
+#+BEGIN_SRC scheme
+(define (make-generator ???)
+  (define yield-tag (make-prompt-tag 'yield))
+  (define (yield . args)
+    (apply abort-to-prompt yield-tag args))
+  (define next ???)
+  (define (call-with-yield-prompt f)
+    (call-with-prompt yield-tag
+      f
+      (lambda (continue . return-vals)
+        (set! next continue)
+        (apply values return-vals))))
+  (lambda args
+    ???))
+#+END_SRC
+We need to take in the user's definition of a generator, so we should take some kind of procedure. Generator definitions need to yield, so we have to pass our local ~yield~ to the argument. To keep the plumbing (passing ~yield~) separate from the user-defined arguments of the generator, let's assume we are given a function of the form
+#+BEGIN_SRC scheme
+(lambda (yield)
+  (lambda actual-arguments
+    ...))
+#+END_SRC
+So let's name the function ~make-generator-call-with-yield~ in case I forget this assumption next month.
+
+Here's its final implementation:
+#+BEGIN_SRC scheme
+(define (make-generator-call-with-yield g)
+  (define yield-tag (make-prompt-tag 'yield))
+  (define (yield . args)
+    (apply abort-to-prompt yield-tag args))
+
+  (define next (g yield))
+
+  (define (call-with-yield-prompt f)
+    (call-with-prompt yield-tag
+      f
+      (lambda (continue . return-vals)
+        (set! next continue)
+        (apply values return-val))))
+
+  (lambda args
+    (call-with-yield-prompt
+     (lambda () (apply next args)))))
+#+END_SRC
+Let's revisit our count example:
+#+BEGIN_SRC scheme
+(define count
+  (make-generator-call-with-yield
+   (lambda (yield)
+     (lambda ()
+       (let loop ((i 0))
+         (yield i)
+         (loop (1+ i)))))))
+#+END_SRC
+This is unwieldy but it works:
+#+BEGIN_SRC scheme
+(count)                                 ;=>0
+(count)                                 ;=>1
+(count)                                 ;=>2
+(count)                                 ;=>3
+#+END_SRC
+* The macro
+Of course, we would prefer the ergonomic syntax where ~generator~ works like a special form. This requires macros. First, we need a way to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
+#+BEGIN_SRC scheme
+(define-syntax-parameter yield
+  (lambda (stx)
+    (syntax-violation
+     'yield
+     "Yield is undefined outside of a generator expression"
+     stx)))
+#+END_SRC
+Now trying to use ~yield~ outside of a generator expression will error (unless there's a local variable named ~yield~).
+
+But we can use ~syntax-parameterize~ to give ~yield~ meaning inside of a generator expression:
+#+BEGIN_SRC scheme
+(define-syntax-rule (generator args body ...)
+  (call-with-yield
+   (lambda (yield%)
+     (syntax-parameterize ((yield (identifier-syntax yield%)))
+       (lambda* args body ...)))))
+#+END_SRC
+
+And the generator expression
+#+BEGIN_SRC scheme
+(define count
+  (generator ()
+    (let loop ((i start))
+      (yield i)
+      (loop (1+ i)))))
+#+END_SRC
+works as desired!
