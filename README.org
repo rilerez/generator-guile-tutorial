@@ -1,13 +1,13 @@
 #+TITLE: Implementing Generators: A delimited continuations tutorial
 # Local Variables:
-# eval: (geiser-syntax--scheme-indent (generator 1))
+# eval: (geiser-syntax--scheme-indent (generator 1) (gen.generator 1))
 # scheme-program-name: "guile"
 # End:
 
 * Generators?
- Generators are great. They let you write functions that can be paused and later continued the next time it's called. This can be useful for statefully modeling iterators, like in Python. Generators can also be used to implement cooperative multitasking: each generator represents a process. Each process can do some work and then pause. A scheduler then calls each process in rotation. In fact, Andy Wingo, Guile maintainer, wrote about the specifics of writing such a system [[https://wingolog.org/archives/2017/06/27/growing-fibers][here]].
+ Generators are great. They let you write functions that can be paused then continued on the next call. Generators statefully model iterators, like in Python. Generators can also implement cooperative multitasking: each generator represents a process, each process does some work, then pauses, and a scheduler calls each process in rotation. In fact, Andy Wingo, Guile maintainer, wrote about such a system [[https://wingolog.org/archives/2017/06/27/growing-fibers][here]].
 
-I will focus only on how to implement generators. Particularly, implementing generators in Guile scheme using delimited continuations. Our goal is to be able to write something like
+ If Guile scheme had a generator expression syntax, it would probably look like this
 #+BEGIN_SRC scheme
 (define count
   (generator ()
@@ -15,7 +15,7 @@ I will focus only on how to implement generators. Particularly, implementing gen
       (yield i)
       (loop (1+ i)))))
 #+END_SRC
-and have it work like the following Python:
+and work like the following Python:
 #+BEGIN_SRC python
 def count (i=0):
     while True:
@@ -23,23 +23,24 @@ def count (i=0):
         i+=1
 #+END_SRC
 
-More precisely, the function ~count~, if called with no arguments, will return 0 the 0th call, 1 on the 1st call, then 2, and so on.
+The function ~count~, if called with no arguments, will return 0 the 0th call, then 1 on the next call, then 2, and so on.
 #+BEGIN_SRC scheme
 (count)         ;=>0
 (count)         ;=>1
 (count)         ;=>2
 (count)         ;=>3
 #+END_SRC
-Essentially, stepping through one iteration of an infinite loop each time ~count~ is called.
+The function ~count~ steps through one iteration of an infinite loop each call.
 
-But this requires a form of control flow that lets us leave a block of code and come back to it later. In Guile, the tool that lets you do this is a delimited continuation, also called a prompt (by analogy with starting, stopping and pausing programs from a shell). Personally, this analogy didn't help me very much. Instead, I will try to explain how they work, while comparing them to throwing and catching exceptions when relevant.
+We need a form of control flow that can leave a block of code and come back to it later. For this purpose, Guile provides the delimited continuation, also called a prompt.
 * Delimited continuations?
-Delimited continuations are a general form of control flow, like a common denominator between generators, coroutines, and exceptions.
+Delimited continuations are a general form of control flow, a common denominator between generators, coroutines, and exceptions.
 
-Delimited continuations let you pause some code, jump back to a previous caller that can "catch" you (like an exception), and give you the option to continue from where you paused later (like a generator).
-To demonstrate how delimited continuations work in Guile, lets walk through a contrived example.
+Delimited continuations let you pause some code, abort back to a previous caller that can catch the abort (like an exception), and give you the option to continue from where you paused later (like a generator).
 
-The first step is to define a prompt tag. This tells Guile how far back up the stack we should go after pausing, analogous to how you can throw a specific type of exception that can only be caught by a matching handler.
+To demonstrate how delimited continuations work in Guile, lets walk through some examples.
+
+The first step is to define a prompt tag. Guile will use the prompt tag to match an abort with a handler.
 #+BEGIN_SRC scheme
 (define example-tag (make-prompt-tag 'example))
 #+END_SRC
@@ -57,7 +58,8 @@ You set up a prompt handler with ~call-with-prompt~ which takes
   the-thunk-to-run
   the-handler-called-if-thunk-aborts)
 #+END_SRC
-When the handler gets called, Guile passes it a continuation, a function you can call to continue the paused computation.
+This will only catch aborts with a matching ~the-prompt-tag~.
+When calling the handler, Guile passes it a continuation, a function that continues the paused computation if called.
 
 Putting it all together, you get
 #+BEGIN_SRC scheme
@@ -74,7 +76,7 @@ This code sets up an ~example-tag~ handler and then calls the first argument, a 
 
 The handler decides to continue, supplying the value 3. The thunk was about to add 1 before pausing, so when supplied 3, it calculates ~(1+ 3)~, evaluating to 4.
 
-You can also return values when pausing:
+You can pass additional values to the handler when pausing:
 #+BEGIN_SRC scheme
 (call-with-prompt example-tag
   (lambda ()
@@ -83,10 +85,9 @@ You can also return values when pausing:
   (lambda (_ . rest)
     rest))
 #+END_SRC
-This will return the list ~(I can return these)~. In this case, we ignore the continuation with no intention to ever continue the paused process.
+This return the list ~(I can return these)~. The function ~1+~ is never called because we ignore the continuation.
 
-Continuations are powerful because they are first-class functions we call, save, or throw away. We can even save the continuation outside of the prompt handler.
-This will come in handy for implementing generators, which we are now prepared to start.
+Continuations are powerful because they are first-class functions we call, save, or throw away. We can even save the continuation outside of the prompt handler, which we will need to implement generators.
 * Implementing generators
 ** the key mechanism
 First, we need a tag:
@@ -111,9 +112,9 @@ For convenience, define yield:
     return-val))
 #+END_SRC
 This evaluates to 0 and saves the continuation in ~next~; however,
-calling ~(next)~ will error because it tries to abort without a prompt handler.
+calling ~(next)~ will error because it tries to abort without a corresponding prompt handler.
 
-So lets abstract out the skeleton that sets up the prompt:
+So let's abstract a function to set up the prompt:
 #+BEGIN_SRC scheme
 (define (call-with-yield-prompt f)
   (call-with-prompt yield-tag
@@ -121,21 +122,23 @@ So lets abstract out the skeleton that sets up the prompt:
     (lambda (continue return-val)
       (set! next continue)
       return-val)))
-
-(define start-count
+#+END_SRC
+Now we can define a ~count~:
+#+BEGIN_SRC
+(define count
   (lambda ()
     (let loop ((i 0))
       (yield i)
       (loop (1+ i)))))
-(define next start-count)
+(define next count)
 
 (call-with-yield-prompt next)           ;=> 0
 (call-with-yield-prompt next)           ;=> 1
 (call-with-yield-prompt next)           ;=> 2
 #+END_SRC
-That's the key mechanism we need. We are almost done, we just need to bundle this up and generalize.
+That's the key mechanism we need. This code works like we wanted. It is close to the exact syntax we were after. We are almost done. But there's problem: this program stores the generator's state in a global variable. We need to encapsulate that to have more than one generator in use at a time.
 
-Unlike Python, Guile has multiple return values. We should support those. Here's a variadic ~yield~:
+But first, one quick generalization: unlike Python, Guile has multiple return values. We should support those. Here's a variadic ~yield~:
 #+BEGIN_SRC scheme
 (define (yield . args)
   (apply abort-to-prompt yield-tag args))
@@ -166,22 +169,33 @@ Ultimately we will want a macro to give us our desired generator syntax. But we 
   (lambda args
     ???))
 #+END_SRC
-We need to take in the user's definition of a generator, so we should take some kind of procedure. Generator definitions need to yield, so we have to pass our local ~yield~ to the argument. To keep the plumbing (passing ~yield~) separate from the user-defined arguments of the generator, let's assume we are given a function of the form
+This is the general shape of a function that creates generators. But we need a way for a user to pass in a generator's definition. Like before, we can build a generator from a function thatwill assumes a yield prompt handler has already been set up. Something along the lines of
 #+BEGIN_SRC scheme
-(lambda (yield)
-  (lambda actual-arguments
-    ...))
+(define count
+  (make-generator
+   (lambda ()
+     (let loop ((i 0))
+       (yield i)
+       (loop (1+ i))))))
 #+END_SRC
-So let's name the function ~make-generator-call-with-yield~ in case I forget this assumption next month.
-
-Here's its final implementation:
+But this won't work. The function ~make-generator~ must be able to inject its local ~yield~ into the generator-defining function it is passed. To keep this plumbing separate from the generator's arguments, we can use a function that takes yield and returns the function we will build the generator from:
 #+BEGIN_SRC scheme
-(define (make-generator-call-with-yield g)
+(define count
+  (make-generator
+   (lambda (yield)
+     (lambda ()
+       (let loop ((i 0))
+         (yield i)
+         (loop (1+ i)))))))
+#+END_SRC
+Let's change the name of ~make-generator~ to ~make-generator-call-with-yield~ to document this calling convention. Here's its final implementation:
+#+BEGIN_SRC scheme
+(define (make-generator-call-with-yield generator-defn-fn)
   (define yield-tag (make-prompt-tag 'yield))
   (define (yield . args)
     (apply abort-to-prompt yield-tag args))
 
-  (define next (g yield))
+  (define next (generator-defn-fn yield))
 
   (define (call-with-yield-prompt f)
     (call-with-prompt yield-tag
@@ -194,7 +208,7 @@ Here's its final implementation:
     (call-with-yield-prompt
      (lambda () (apply next args)))))
 #+END_SRC
-Let's revisit our count example:
+Let's revisit ~count~:
 #+BEGIN_SRC scheme
 (define count
   (make-generator-call-with-yield
@@ -211,8 +225,9 @@ This is unwieldy but it works:
 (count)                                 ;=>2
 (count)                                 ;=>3
 #+END_SRC
+The ~make-generator-call-with-yield~ and the outer ~(lambda (yield) ...)~ are boilerplate. But after the second lambda, this is character-for-character identical with the ideal generator syntax we started with.
 * Syntactic sugar
-Of course, we would prefer the ergonomic syntax where ~generator~ works like a special form. This requires macros. First, we need a way to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
+ Macros let us abstract away this boilerplate. First, we need a way to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
 #+BEGIN_SRC scheme
 (define-syntax-parameter yield
   (lambda (stx)
@@ -221,7 +236,7 @@ Of course, we would prefer the ergonomic syntax where ~generator~ works like a s
      "Yield is undefined outside of a generator expression"
      stx)))
 #+END_SRC
-Now trying to use ~yield~ outside of a generator expression will error (unless there's a local variable named ~yield~).
+Now trying to use ~yield~ outside of a generator expression will error (you can still use yield as a local variable name).
 
 But we can use ~syntax-parameterize~ to give ~yield~ meaning inside of a generator expression:
 #+BEGIN_SRC scheme
@@ -241,6 +256,79 @@ And the generator expression
       (loop (1+ i)))))
 #+END_SRC
 works as desired!
+* What if yield means something in the language of the domain
+In _97 things every programmer should know_, Dan North advises to "code in the language of the domain", comparing the code samples
+#+BEGIN_SRC java
+if (portfolioIdsByTraderId.get(trader.getId())
+    .containsKey(portfolio.getId())) {...}
+#+END_SRC
+and the equivalent but immediately readable
+#+BEGIN_SRC java
+if (trader.canView(portfolio)) {...}
+#+END_SRC
+This is in line with the lispy advice to build the language up to understand you want to say instead of lowering your data and logic down to the language.
+
+Some domains, finance or farming for example, use yield as part of their jargon. Using our ~generator~ expressions in such codebases introduces ambiguity: is ~yield~ finance (etc) jargon or a language keyword?
+
+What can we do? What should we do?
+** Nothing
+This is what Python does. Trying to run ~yield=3~ errors. This might be good enough for us. It's likely that there's different kinds of yields (crop yields, financial yields). A more specific name on the client side might be fine.
+** Guile's module system
+[[https://www.gnu.org/software/guile/manual/html_node/Using-Guile-Modules.html][Guile's module system]] can allow for accessing through a long name with ~@~ or through a ~#:prefix~ in the client's  ~use-modules~ declaration.
+#+BEGIN_SRC scheme
+(define-module (generator)
+  #:export generator
+  #:export yield)
+
+(define-syntax-rule (generator args body ...)
+  ...)
+...
+#+END_SRC
+Then clients can say
+#+BEGIN_SRC scheme
+(define count
+  ((@ (generator) generator) ()
+   (let loop ((i 0))
+     ((@ (generator) yield) i)
+     (loop (1+ i)))))
+#+END_SRC
+or the much more ergonomic
+#+BEGIN_SRC scheme
+(use-modules ((generator)
+              #:prefix gen.))
+(define count
+  (gen.generator ()
+    (let loop ((i 0))
+      (gen.yield i)
+      (loop (1+ i)))))
+#+END_SRC
+** Let the user supply a keyword
+We can let users supply a yield keyword:
+#+BEGIN_SRC scheme
+(define-syntax-rule (generator yield-keyword args body ...)
+  (make-generator-call-with-yield
+   (lambda (yield-keyword)
+     (lambda args body ...))))
+#+END_SRC
+In general, letting client code decide the names that a macro will inject into its scope is a good idea. Implicitly injecting names into a scope means programmers have to remember bespoke context-sensitive keywords to understand code. As I always say "when in doubt, don't silently inject scope into client code".
+
+But ~yield~ is the standard name for returning from a generator. In [[https://en.wikipedia.org/wiki/Generator_%28computer_programming%29][the wikipedia page for generators]], almost all languages with syntactic sugar for generators use the keyword ~yield~. Consider a call site for this version of ~generator~:
+#+BEGIN_SRC scheme
+(generator yield ()
+  (let loop ((i 0))
+    (yield i)
+    (loop (1+ i))))
+#+END_SRC
+In the typical case, ~yield~ adds noise. In the worst case, code is more confusing.
+#+BEGIN_SRC scheme
+(generator floop ()
+  (let loop ((i 0))
+    (floop i)
+    (loop (1+ i))))
+#+END_SRC
+We could rectify the situation by having a version of ~generator~ that defaults to ~yield~ yet allows users to supply their own name, but now this simple macro is getting complicated.
+
+In my opinion, choice 2, using the package system, is best. It adds the necessary flexibility with minimal complexity. People who don't need it don't even need to think about it. And ~yield~ will be called some form of ~yield~.
 * See also
 - [[https://www.gnu.org/software/guile/manual/guile.html#Prompts][The Guile manual's entry on prompts]]
 - Andy Wingo has some good blog posts

@@ -1,8 +1,8 @@
-(define (make-generator-call-with-yield g)
+(define (make-generator-call-with-yield generator-defn-fn)
   (define yield-tag (make-prompt-tag 'yield))
   (define (yield . args)
     (apply abort-to-prompt yield-tag args))
-  (define next (g yield))
+  (define next (generator-defn-fn yield))
   (define (call-with-yield-prompt f)
     (call-with-prompt yield-tag
       f
