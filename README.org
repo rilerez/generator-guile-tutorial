@@ -124,7 +124,7 @@ So let's abstract a function to set up the prompt:
       return-val)))
 #+END_SRC
 Now we can define a ~count~:
-#+BEGIN_SRC
+#+BEGIN_SRC scheme
 (define count
   (lambda ()
     (let loop ((i 0))
