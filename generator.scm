@@ -1,3 +1,7 @@
+(define-module (generator)
+  #:export generator
+  #:export yield)
+
 (define (make-generator-call-with-yield generator-defn-fn)
   (define yield-tag (make-prompt-tag 'yield))
   (define (yield . args)
