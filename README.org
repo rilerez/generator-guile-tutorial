@@ -169,7 +169,7 @@ Ultimately we will want a macro to give us our desired generator syntax. But we 
   (lambda args
     ???))
 #+END_SRC
-This is the general shape of a function that creates generators. But we need a way for a user to pass in a generator's definition. Like before, we can build a generator from a function thatwill assumes a yield prompt handler has already been set up. Something along the lines of
+This is the general shape of a function that creates generators. But we need a way for a user to pass in a generator's definition. Like before, we can build a generator from a function that assumes a yield prompt handler has already been set up. Something along the lines of
 #+BEGIN_SRC scheme
 (define count
   (make-generator
@@ -178,7 +178,7 @@ This is the general shape of a function that creates generators. But we need a w
        (yield i)
        (loop (1+ i))))))
 #+END_SRC
-But this won't work. The function ~make-generator~ must be able to inject its local ~yield~ into the generator-defining function it is passed. To keep this plumbing separate from the generator's arguments, we can use a function that takes yield and returns the function we will build the generator from:
+But this won't work. The function ~make-generator~ must be able to hand its local ~yield~ to the function passed in. This passed function must take a ~yield~ parameter. To keep that plumbing separate from the generator's arguments, we can use a function that takes yield and returns the function we will build the generator from:
 #+BEGIN_SRC scheme
 (define count
   (make-generator
@@ -227,7 +227,7 @@ This is unwieldy but it works:
 #+END_SRC
 The ~make-generator-call-with-yield~ and the outer ~(lambda (yield) ...)~ are boilerplate. But after the second lambda, this is character-for-character identical with the ideal generator syntax we started with.
 * Syntactic sugar
- Macros let us abstract away this boilerplate. First, we need a way to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
+ Macros let us abstract away this boilerplate. First, we need to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
 #+BEGIN_SRC scheme
 (define-syntax-parameter yield
   (lambda (stx)
@@ -266,9 +266,9 @@ and the equivalent but immediately readable
 #+BEGIN_SRC java
 if (trader.canView(portfolio)) {...}
 #+END_SRC
-This is in line with the lispy advice to build the language up to understand you want to say instead of lowering your data and logic down to the language.
+This is in line with the classic lisp advice to build the language up to understand you want to say instead of lowering your data and logic down to the language.
 
-Some domains, finance or farming for example, use yield as part of their jargon. Using our ~generator~ expressions in such codebases introduces ambiguity: is ~yield~ finance (etc) jargon or a language keyword?
+Some domains, finance or farming for example, use yield as jargon. Using our ~generator~ expressions in such codebases introduces ambiguity: is ~yield~ finance (etc) jargon or a language keyword?
 
 What can we do? What should we do?
 ** Nothing
@@ -310,16 +310,16 @@ We can let users supply a yield keyword:
    (lambda (yield-keyword)
      (lambda args body ...))))
 #+END_SRC
-In general, letting client code decide the names that a macro will inject into its scope is a good idea. Implicitly injecting names into a scope means programmers have to remember bespoke context-sensitive keywords to understand code. As I always say "when in doubt, don't silently inject scope into client code".
+In general, letting client code decide the names that a macro will inject into its scope is a good idea. Implicitly injecting names into a scope means programmers have to remember bespoke context-sensitive keywords to understand code. As I always say "when in doubt, don't silently inject names into client code's scope".
 
-But ~yield~ is the standard name for returning from a generator. In [[https://en.wikipedia.org/wiki/Generator_%28computer_programming%29][the wikipedia page for generators]], almost all languages with syntactic sugar for generators use the keyword ~yield~. Consider a call site for this version of ~generator~:
+But ~yield~ is the standard name for this operation. In [[https://en.wikipedia.org/wiki/Generator_%28computer_programming%29][the wikipedia page for generators]], almost all languages with syntactic sugar for generators use the keyword ~yield~. Consider a call site for this version of ~generator~:
 #+BEGIN_SRC scheme
 (generator yield ()
   (let loop ((i 0))
     (yield i)
     (loop (1+ i))))
 #+END_SRC
-In the typical case, ~yield~ adds noise. In the worst case, code is more confusing.
+In the typical case, ~yield~ adds noise. In the worst case, code is obfuscated.
 #+BEGIN_SRC scheme
 (generator floop ()
   (let loop ((i 0))
@@ -327,8 +327,8 @@ In the typical case, ~yield~ adds noise. In the worst case, code is more confusi
     (loop (1+ i))))
 #+END_SRC
 We could rectify the situation by having a version of ~generator~ that defaults to ~yield~ yet allows users to supply their own name, but now this simple macro is getting complicated.
-
-In my opinion, choice 2, using the package system, is best. It adds the necessary flexibility with minimal complexity. People who don't need it don't even need to think about it. And ~yield~ will be called some form of ~yield~.
+** So, which one?
+In my opinion, choice 2, using the module system, is best. It adds the necessary flexibility with minimal complexity. People who don't need it don't even need to think about it. And ~yield~ will be called some form of ~yield~.
 * See also
 - [[https://www.gnu.org/software/guile/manual/guile.html#Prompts][The Guile manual's entry on prompts]]
 - Andy Wingo has some good blog posts
