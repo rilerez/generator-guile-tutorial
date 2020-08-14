@@ -29,16 +29,3 @@
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
        (lambda args body ...)))))
-
-
-
-
-(define count
-  (generator ()
-    (let loop ((i start))
-      (yield i)
-      (loop (1+ i)))))
-(count)                                 ;=>0
-(count)                                 ;=>1
-(count)                                 ;=>2
-(count)                                 ;=>3
