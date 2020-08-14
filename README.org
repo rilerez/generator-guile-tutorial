@@ -26,6 +26,7 @@ def count (i=0):
 #+END_SRC
 
 The function ~count~, if called with no arguments, will return 0 the 0th call, then 1 on the next call, then 2, and so on.
+#+NAME: call-count
 #+BEGIN_SRC scheme :eval never-export
 (count)         ;=>0
 (count)         ;=>1
@@ -295,6 +296,7 @@ Then clients can say
      (loop (1+ i)))))
 #+END_SRC
 or the much more ergonomic
+#+NAME: count-with-module
 #+BEGIN_SRC scheme :eval never-export
 (use-modules ((generator)
               #:prefix gen.))
@@ -347,6 +349,11 @@ In my opinion, choice 2, using the module system, is best. It adds the necessary
 <<generator-syntax>>
 #+END_SRC
 
+#+BEGIN_SRC scheme :exports none :tangle example.scm :noweb tangle :eval never-export
+<<count-with-module>>
+
+<<call-count>>
+#+END_SRC
 # Local Variables:
 # eval: (geiser-syntax--scheme-indent (generator 1) (gen.generator 1))
 # End:
