@@ -266,7 +266,7 @@ and the equivalent but immediately readable
 #+BEGIN_SRC java
 if (trader.canView(portfolio)) {...}
 #+END_SRC
-This is in line with the classic lisp advice to build the language up to understand you want to say instead of lowering your data and logic down to the language.
+This is in line with the classic lisp advice to build the language up to understand what you want to say instead of lowering your thoughts down to the language.
 
 Some domains, finance or farming for example, use yield as jargon. Using our ~generator~ expressions in such codebases introduces ambiguity: is ~yield~ domain jargon or a language keyword?
 
