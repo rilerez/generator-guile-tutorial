@@ -13,7 +13,6 @@
       (lambda (continue . return-vals)
         (set! next continue)
         (apply values return-val))))
-
   (lambda args
     (call-with-yield-prompt
      (lambda () (apply next args)))))
