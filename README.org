@@ -1,9 +1,8 @@
 # -*- geiser-scheme-implementation: guile -*-
 #+TITLE: Implementing Generators: A delimited continuations tutorial
 #+AUTHOR: Riley Levy
-#+OPTIONS: toc:nil
+#+OPTIONS: toc:nil, html5-fancy:t
 #+HTML_DOCTYPE:html5
-#+html5-fancy:t
 
 
 * Generators?
