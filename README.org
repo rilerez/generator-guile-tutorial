@@ -192,10 +192,10 @@ But this won't work. The function ~make-generator~ must be able to hand its loca
          (yield i)
          (loop (1+ i)))))))
 #+END_SRC
-Let's change the name of ~make-generator~ to ~make-generator-call-with-yield~ to document this calling convention. Here's its final implementation:
+Let's change the name of ~make-generator~ to ~make-generator-passing-yield~ to document this calling convention. Here's its final implementation:
 #+NAME: make-generator
 #+BEGIN_SRC scheme :eval never-export
-(define (make-generator-call-with-yield generator-defn-fn)
+(define (make-generator-passing-yield generator-defn-fn)
   (define yield-tag (make-prompt-tag 'yield))
   (define (yield . args)
     (apply abort-to-prompt yield-tag args))
@@ -213,7 +213,7 @@ Let's change the name of ~make-generator~ to ~make-generator-call-with-yield~ to
 Let's revisit ~count~:
 #+BEGIN_SRC scheme :eval never-export
 (define count
-  (make-generator-call-with-yield
+  (make-generator-passing-yield
    (lambda (yield)
      (lambda ()
        (let loop ((i 0))
@@ -227,7 +227,7 @@ This is unwieldy but it works:
 (count)                      ;=>2
 (count)                      ;=>3
 #+END_SRC
-The ~make-generator-call-with-yield~ and the outer ~(lambda (yield) ...)~ are boilerplate. But after the second lambda, this is character-for-character identical with the ideal generator syntax we started with.
+The ~make-generator-passing-yield~ and the outer ~(lambda (yield) ...)~ are boilerplate. But after the second lambda, this is character-for-character identical with the ideal generator syntax we started with.
 * Syntactic sugar
 Macros let us abstract away this boilerplate. First, we need to make ~yield~ into a keyword. In Guile, the simplest way to do this is with a syntax parameter:
 #+NAME: yield-syntax
@@ -245,7 +245,7 @@ But we can use ~syntax-parameterize~ to give ~yield~ meaning inside of a generat
 #+NAME: generator-syntax
 #+BEGIN_SRC scheme :eval never-export
 (define-syntax-rule (generator args body ...)
-  (make-generator-call-with-yield
+  (make-generator-passing-yield
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
        (lambda args body ...)))))
@@ -313,7 +313,7 @@ or the much more ergonomic
 We can let users supply a yield keyword:
 #+BEGIN_SRC scheme :eval never-export
 (define-syntax-rule (generator yield-keyword args body ...)
-  (make-generator-call-with-yield
+  (make-generator-passing-yield
    (lambda (yield-keyword)
      (lambda args body ...))))
 #+END_SRC

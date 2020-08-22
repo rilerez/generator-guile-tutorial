@@ -1,7 +1,7 @@
 (define-module (generator)
   #:export (generator yield))
 
-(define (make-generator-call-with-yield generator-defn-fn)
+(define (make-generator-passing-yield generator-defn-fn)
   (define yield-tag (make-prompt-tag 'yield))
   (define (yield . args)
     (apply abort-to-prompt yield-tag args))
@@ -24,7 +24,7 @@
      stx)))
 
 (define-syntax-rule (generator args body ...)
-  (make-generator-call-with-yield
+  (make-generator-passing-yield
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
        (lambda args body ...)))))
