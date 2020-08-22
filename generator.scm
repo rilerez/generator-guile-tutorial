@@ -1,6 +1,5 @@
 (define-module (generator)
-  #:export generator
-  #:export yield)
+  #:export (generator yield))
 
 (define (make-generator-call-with-yield generator-defn-fn)
   (define yield-tag (make-prompt-tag 'yield))
@@ -12,7 +11,7 @@
       f
       (lambda (continue . return-vals)
         (set! next continue)
-        (apply values return-val))))
+        (apply values return-vals))))
   (lambda args
     (call-with-yield-prompt
      (lambda () (apply next args)))))
@@ -25,7 +24,7 @@
      stx)))
 
 (define-syntax-rule (generator args body ...)
-  (call-with-yield
+  (make-generator-call-with-yield
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
        (lambda args body ...)))))

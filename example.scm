@@ -1,5 +1,5 @@
-(use-modules ((generator)
-              #:prefix gen.))
+(load "generator.scm")
+(use-modules ((generator) #:prefix gen.))
 (define count
   (gen.generator ()
     (let loop ((i 0))

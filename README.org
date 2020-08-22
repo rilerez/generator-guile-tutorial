@@ -1,7 +1,9 @@
 # -*- geiser-scheme-implementation: guile -*-
 #+TITLE: Implementing Generators: A delimited continuations tutorial
 #+AUTHOR: Riley Levy
-#+OPTIONS: toc:nil, html5-fancy:t
+#+OPTIONS: toc:nil
+#+OPTIONS: html5-fancy:t
+#+OPTIONS: html-scripts:nil html-style:nil
 #+HTML_DOCTYPE:html5
 
 
@@ -203,7 +205,7 @@ Let's change the name of ~make-generator~ to ~make-generator-call-with-yield~ to
       f
       (lambda (continue . return-vals)
         (set! next continue)
-        (apply values return-val))))
+        (apply values return-vals))))
   (lambda args
     (call-with-yield-prompt
      (lambda () (apply next args)))))
@@ -243,7 +245,7 @@ But we can use ~syntax-parameterize~ to give ~yield~ meaning inside of a generat
 #+NAME: generator-syntax
 #+BEGIN_SRC scheme :eval never-export
 (define-syntax-rule (generator args body ...)
-  (call-with-yield
+  (make-generator-call-with-yield
    (lambda (yield%)
      (syntax-parameterize ((yield (identifier-syntax yield%)))
        (lambda args body ...)))))
@@ -282,9 +284,11 @@ Just add
 #+NAME: module
 #+BEGIN_SRC scheme :eval never-export
 (define-module (generator)
-  #:export generator
-  #:export yield)
+  #:export (generator yield))
 #+END_SRC
+
+#+RESULTS: module
+
 at the top of the file.
 Then clients can say
 #+BEGIN_SRC scheme :eval never-export
@@ -297,8 +301,8 @@ Then clients can say
 or the much more ergonomic
 #+NAME: count-with-module
 #+BEGIN_SRC scheme :eval never-export
-(use-modules ((generator)
-              #:prefix gen.))
+(load "generator.scm")
+(use-modules ((generator) #:prefix gen.))
 (define count
   (gen.generator ()
     (let loop ((i 0))
@@ -335,7 +339,7 @@ In my opinion, choice 2, using the module system, is best. It adds the necessary
 * See also
 - [[https://www.gnu.org/software/guile/manual/guile.html#Prompts][The Guile manual's entry on prompts]]
 - Andy Wingo has some good blog posts
-  - [[https://wingolog.org/archives/2010/02/26/guile-and-delimited-continuations][Guile and delimited continuations]] goes over delimited continuations do and a high level view of how they can be implemented
+  - [[https://wingolog.org/archives/2010/02/26/guile-and-delimited-continuations][Guile and delimited continuations]] goes over delimited continuations and their implementation.
   - [[https://wingolog.org/archives/2017/06/27/growing-fibers][Growing fibers]] goes over using delimited continuations to implement fibers (cooperative lightweight threads)
 - [[https://www2.ccs.neu.edu/racket/pubs/pldi93-sitaram.pdf][Handling Control]], The paper Andy Wingo cites as the paper proposing the version of delimited continuations Guile uses.
 #+BEGIN_SRC scheme :exports none :tangle generator.scm :noweb tangle :eval never-export
@@ -355,4 +359,5 @@ In my opinion, choice 2, using the module system, is best. It adds the necessary
 #+END_SRC
 # Local Variables:
 # eval: (geiser-syntax--scheme-indent (generator 1) (gen.generator 1))
+# org-html-htmlize-output-type: css
 # End:
